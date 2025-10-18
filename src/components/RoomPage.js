@@ -5,7 +5,7 @@ import Peer from 'simple-peer';
 import '../App.css';
 
 const socket = io('https://pinch-server-app.vercel.app/', { 
-  transports: ['websocket'],
+  transports: ['polling', 'websocket'],
   autoConnect: false 
 });
 
