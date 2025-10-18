@@ -4,7 +4,7 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import '../App.css';
 
-const socket = io('http://localhost:8000', { 
+const socket = io('https://pinch-server-app.vercel.app/', { 
   transports: ['websocket'],
   autoConnect: false 
 });
