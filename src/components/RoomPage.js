@@ -12,16 +12,18 @@ const socket = io('http://localhost:8000', {
 function RoomPage() {
   const [localStream, setLocalStream] = useState(null);
   const [peers, setPeers] = useState([]);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const localVideoRef = useRef(null);
   const peersRef = useRef([]);
+  const localStreamRef = useRef(null); 
   const { roomId } = useParams();
 
-
   useEffect(() => {
-    console.log('Running Effect 1: GetUserMedia');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         setLocalStream(stream); 
+        localStreamRef.current = stream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream; 
         }
@@ -32,18 +34,13 @@ function RoomPage() {
       });
   }, []); 
 
-
   useEffect(() => {
     if (localStream) {
-      console.log('Running Effect 2: Socket/WebRTC Logic');
-      
       socket.connect(); 
       
       socket.emit('join-room', roomId);
-      console.log(`Emitted 'join-room' for room: ${roomId}`);
 
       socket.on('existing-users', (users) => {
-        console.log('Got existing-users:', users);
         const newPeers = [];
         users.forEach(userId => {
           const peer = createPeer(userId, socket.id, localStream);
@@ -54,32 +51,28 @@ function RoomPage() {
       });
 
       socket.on('user-joined', (userId) => {
-        console.log(`User ${userId} joined the room`);
         const peer = addPeer(userId, socket.id, localStream);
         peersRef.current.push({ peerId: userId, peer });
         setPeers(prevPeers => [...prevPeers, { peerId: userId, peer }]);
       });
 
       socket.on('offer', (payload) => {
-        console.log('Received offer from', payload.from);
         const peerRef = findPeer(payload.from);
-        if (peerRef) {
+        if (peerRef && !peerRef.peer.destroyed) {
           peerRef.peer.signal(payload.sdp);
         }
       });
 
       socket.on('answer', (payload) => {
-        console.log('Received answer from', payload.from);
         const peerRef = findPeer(payload.from);
-        if (peerRef) {
+        if (peerRef && !peerRef.peer.destroyed) {
           peerRef.peer.signal(payload.sdp);
         }
       });
 
       socket.on('ice-candidate', (payload) => {
-        console.log('Received ICE candidate from', payload.from);
         const peerRef = findPeer(payload.from);
-        if (peerRef) {
+        if (peerRef && !peerRef.peer.destroyed) {
           peerRef.peer.signal({
             type: 'candidate',
             candidate: payload.candidate,
@@ -88,7 +81,6 @@ function RoomPage() {
       });
 
       socket.on('user-disconnected', (userId) => {
-        console.log(`User ${userId} disconnected`);
         const peerRef = findPeer(userId);
         if (peerRef) {
           peerRef.peer.destroy();
@@ -99,9 +91,7 @@ function RoomPage() {
     }
 
     return () => {
-      console.log('Cleaning up RoomPage');
       socket.disconnect(); 
-      
       socket.off('existing-users');
       socket.off('user-joined');
       socket.off('offer');
@@ -115,7 +105,27 @@ function RoomPage() {
     };
   }, [roomId, localStream]); 
 
+  const toggleAudio = () => {
+    const stream = localStreamRef.current;
+    if (stream) {
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsAudioEnabled(audioTrack.enabled);
+      }
+    }
+  };
 
+  const toggleVideo = () => {
+    const stream = localStreamRef.current;
+    if (stream) {
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoEnabled(videoTrack.enabled);
+      }
+    }
+  };
 
   function createPeer(userIdToSignal, callerId, stream) {
     const peer = new Peer({
@@ -171,10 +181,21 @@ function RoomPage() {
     return peersRef.current.find(p => p.peerId === userId);
   }
 
-  
   return (
     <div className="App-header">
       <h1>Pinch Room: {roomId}</h1>
+      
+      {}
+      <div className="controls-container">
+        <button onClick={toggleAudio}>
+          {isAudioEnabled ? 'Mute' : 'Unmute'}
+        </button>
+        <button onClick={toggleVideo}>
+          {isVideoEnabled ? 'Stop Video' : 'Start Video'}
+        </button>
+      </div>
+      {}
+
       <div className="video-grid">
         <div className="video-container">
           <h2>My Video</h2>
