@@ -20,8 +20,10 @@ function RoomPage() {
   const { roomId } = useParams();
 
   useEffect(() => {
+    console.log("Attempting to get user media...");
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
+        console.log("Successfully got user media.");
         setLocalStream(stream); 
         localStreamRef.current = stream;
         if (localVideoRef.current) {
@@ -36,11 +38,14 @@ function RoomPage() {
 
   useEffect(() => {
     if (localStream) {
+      console.log("Local stream available, connecting to socket...");
       socket.connect(); 
       
+      console.log(`Emitting 'join-room' for room: ${roomId}`);
       socket.emit('join-room', roomId);
 
       socket.on('existing-users', (users) => {
+        console.log("Received 'existing-users':", users);
         const newPeers = [];
         users.forEach(userId => {
           const peer = createPeer(userId, socket.id, localStream);
@@ -51,12 +56,14 @@ function RoomPage() {
       });
 
       socket.on('user-joined', (userId) => {
+        console.log(`'user-joined' event received for user: ${userId}`);
         const peer = addPeer(userId, socket.id, localStream);
         peersRef.current.push({ peerId: userId, peer });
         setPeers(prevPeers => [...prevPeers, { peerId: userId, peer }]);
       });
 
       socket.on('offer', (payload) => {
+        console.log("Received 'offer' from:", payload.from);
         const peerRef = findPeer(payload.from);
         if (peerRef && !peerRef.peer.destroyed) {
           peerRef.peer.signal(payload.sdp);
@@ -64,6 +71,7 @@ function RoomPage() {
       });
 
       socket.on('answer', (payload) => {
+        console.log("Received 'answer' from:", payload.from);
         const peerRef = findPeer(payload.from);
         if (peerRef && !peerRef.peer.destroyed) {
           peerRef.peer.signal(payload.sdp);
@@ -71,6 +79,7 @@ function RoomPage() {
       });
 
       socket.on('ice-candidate', (payload) => {
+        console.log("Received 'ice-candidate' from:", payload.from);
         const peerRef = findPeer(payload.from);
         if (peerRef && !peerRef.peer.destroyed) {
           peerRef.peer.signal({
@@ -81,6 +90,7 @@ function RoomPage() {
       });
 
       socket.on('user-disconnected', (userId) => {
+        console.log(`'user-disconnected' event for user: ${userId}`);
         const peerRef = findPeer(userId);
         if (peerRef) {
           peerRef.peer.destroy();
@@ -91,6 +101,7 @@ function RoomPage() {
     }
 
     return () => {
+      console.log("Cleaning up and disconnecting socket...");
       socket.disconnect(); 
       socket.off('existing-users');
       socket.off('user-joined');
