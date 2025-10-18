@@ -36,3 +36,18 @@
     transform: rotate(360deg);
   }
 }
+
+.video-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+}
+
+video {
+  width: 400px;
+  height: 300px;
+  background-color: #282c34;
+  border: 2px solid white;
+  border-radius: 8px;
+}
