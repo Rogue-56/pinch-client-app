@@ -54,7 +54,7 @@ function RoomPage() {
 
     // Create a fresh socket connection for this component instance
     console.log("Creating new socket connection...");
-    const socket = io('https://pinch-server-app.vercel.app/', { 
+    const socket = io('https://pinch-server-app.onrender.com/', { 
       path: "/socket.io/",
       transports: ['polling', 'websocket']
     });
