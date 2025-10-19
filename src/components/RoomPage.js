@@ -352,9 +352,10 @@ function RoomPage() {
     const peer = new Peer({
       initiator: true,
       trickle: true,
-      stream: stream,
       config: ICE_SERVERS
     });
+
+    stream.getTracks().forEach(track => peer.addTrack(track, stream));
 
     peer.on('signal', (data) => {
       if (data.type === 'offer') {
@@ -381,9 +382,10 @@ function RoomPage() {
     const peer = new Peer({
       initiator: false,
       trickle: true,
-      stream: stream,
       config: ICE_SERVERS
     });
+
+    stream.getTracks().forEach(track => peer.addTrack(track, stream));
 
     peer.on('signal', (data) => {
       if (data.type === 'answer') {
@@ -414,9 +416,10 @@ function RoomPage() {
     const peer = new Peer({
       initiator: true,
       trickle: true,
-      stream: stream,
       config: ICE_SERVERS
     });
+
+    stream.getTracks().forEach(track => peer.addTrack(track, stream));
 
     peer.on('signal', (data) => {
       if (data.type === 'offer') {
