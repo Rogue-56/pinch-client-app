@@ -121,7 +121,7 @@ function RoomPage() {
       const newPeers = users
         .filter(user => user.id !== socket.id && !findPeer(user.id))
         .map(user => {
-          const peer = createPeer(user.id, socket.id, localStreamRef.current, socket);
+          const peer = addPeer(user.id, localStreamRef.current, socket);
           return { peerId: user.id, peer, name: user.name };
         });
 
@@ -141,7 +141,7 @@ function RoomPage() {
         return;
       }
 
-      const peer = addPeer(user.id, localStreamRef.current, socket);
+      const peer = createPeer(user.id, socket.id, localStreamRef.current, socket);
       const newPeerRef = { peerId: user.id, peer, name: user.name };
       peersRef.current.push(newPeerRef);
       setPeers(prev => [...prev, newPeerRef]);
@@ -548,6 +548,13 @@ function RoomPage() {
           <h2>You ({localUser.name || '...'})</h2>
           <video ref={localVideoRef} autoPlay playsInline muted />
         </div>
+
+        {isScreenSharing && (
+          <div className="video-container">
+            <h2>Your Screen</h2>
+            <video ref={video => { if (video) video.srcObject = screenStream; }} autoPlay playsInline muted />
+          </div>
+        )}
 
         {peers.map(({ peerId, peer, name }) => (
           <RemoteVideo key={peerId} peerId={peerId} peer={peer} name={name} onRemove={() => removeUser(peerId)} />
