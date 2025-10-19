@@ -31,10 +31,15 @@ function RoomPage() {
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const socketRef = useRef(null);
+  const isScreenSharingRef = useRef(isScreenSharing);
   const userJoinedSoundRef = useRef(null);
   const userLeftSoundRef = useRef(null);
   const newMessageSoundRef = useRef(null);
   const { roomId } = useParams();
+
+  useEffect(() => {
+    isScreenSharingRef.current = isScreenSharing;
+  }, [isScreenSharing]);
 
   const playUserJoinedSound = () => {
     if (userJoinedSoundRef.current) {
@@ -146,7 +151,7 @@ function RoomPage() {
       peersRef.current.push(newPeerRef);
       setPeers(prev => [...prev, newPeerRef]);
 
-      if (isScreenSharing) {
+      if (isScreenSharingRef.current) {
         const screenPeer = createScreenPeer(user.id, socket.id, screenStreamRef.current, socket);
         const newScreenPeerRef = { peerId: user.id, peer: screenPeer, name: user.name };
         screenPeersRef.current.push(newScreenPeerRef);
@@ -269,7 +274,7 @@ function RoomPage() {
       }
       socketRef.current = null;
     };
-  }, [roomId, localStream, isScreenSharing]);
+  }, [roomId, localStream]);
 
   const toggleAudio = () => {
     const stream = localStreamRef.current;
