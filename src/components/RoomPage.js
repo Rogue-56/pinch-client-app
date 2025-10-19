@@ -273,7 +273,7 @@ function RoomPage() {
 
   return (
     <div className="App-header">
-      <audio ref={notificationSoundRef} src="/mixkit-long-pop-2358.wav" preload="auto" />
+      <audio ref={notificationSoundRef} src="/mixkit-correct-answer-tone-2870.wav" preload="auto" />
       <h1>Pinch Room: {roomId}</h1>
       <p style={{ fontSize: '14px', color: '#888' }}>
         Your Name: {localUser.name || 'Assigning...'} | 
