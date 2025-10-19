@@ -56,7 +56,9 @@ function RoomPage() {
     console.log("Creating new socket connection...");
     const socket = io('https://pinch-server-app.onrender.com/', { 
       path: "/socket.io/",
-      transports: ['polling', 'websocket']
+      transports: ['polling', 'websocket'],
+      forceNew: true,  // Force a new connection, don't reuse
+      reconnection: false  // Disable auto-reconnection to prevent duplicates
     });
     socketRef.current = socket;
 
@@ -69,6 +71,8 @@ function RoomPage() {
     // I'm joining - these are users already in the room, I initiate connection
     socket.on('existing-users', (users) => {
       console.log("Existing users in room:", users);
+      console.log("My socket ID:", socket.id);
+      
       // Clear any existing peers before adding new ones
       peersRef.current.forEach(({ peer }) => {
         if (peer && !peer.destroyed) {
@@ -79,6 +83,12 @@ function RoomPage() {
       setPeers([]);
 
       users.forEach(userId => {
+        // CRITICAL: Don't connect to yourself
+        if (userId === socket.id) {
+          console.log("Skipping self-connection");
+          return;
+        }
+        
         const peer = createPeer(userId, socket.id, localStream, socket);
         peersRef.current.push({ peerId: userId, peer });
         setPeers(prev => [...prev, { peerId: userId, peer }]);
@@ -88,6 +98,14 @@ function RoomPage() {
     // Someone else joined - I'm existing user, I wait for their offer
     socket.on('user-joined', (userId) => {
       console.log(`New user joined: ${userId}`);
+      console.log("My socket ID:", socket.id);
+      
+      // CRITICAL: Don't connect to yourself
+      if (userId === socket.id) {
+        console.log("Skipping self-connection in user-joined");
+        return;
+      }
+      
       // Check if peer already exists to prevent duplicates
       const existingPeer = findPeer(userId);
       if (existingPeer) {
