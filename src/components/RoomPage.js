@@ -18,6 +18,7 @@ function RoomPage() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [showUserList, setShowUserList] = useState(false);
+  const [localUser, setLocalUser] = useState({ id: null, name: null });
   const localVideoRef = useRef(null);
   const peersRef = useRef([]);
   const localStreamRef = useRef(null);
@@ -53,34 +54,35 @@ function RoomPage() {
   useEffect(() => {
     if (!localStream || !localStreamRef.current) return;
     
-    // Prevent creating multiple sockets
     if (socketRef.current && socketRef.current.connected) {
       console.log("Socket already exists, reusing:", socketRef.current.id);
       return;
     }
 
-    // Create a fresh socket connection for this component instance
     console.log("Creating new socket connection...");
     const socket = io('https://pinch-server-app.onrender.com/', { 
       path: "/socket.io/",
       transports: ['polling', 'websocket'],
-      forceNew: true,  // Force a new connection, don't reuse
-      reconnection: false  // Disable auto-reconnection to prevent duplicates
+      forceNew: true,
+      reconnection: false
     });
     socketRef.current = socket;
 
     socket.on('connect', () => {
       console.log(`Socket connected with ID: ${socket.id}`);
+      setLocalUser(prev => ({ ...prev, id: socket.id }));
       console.log(`Joining room: ${roomId}`);
       socket.emit('join-room', roomId);
     });
 
-    // I'm joining - these are users already in the room, I initiate connection
+    socket.on('name-assigned', (name) => {
+      console.log(`Assigned name: ${name}`);
+      setLocalUser(prev => ({ ...prev, name }));
+    });
+
     socket.on('existing-users', (users) => {
       console.log("Existing users in room:", users);
-      console.log("My socket ID:", socket.id);
       
-      // Clear any existing peers before adding new ones
       peersRef.current.forEach(({ peer }) => {
         if (peer && !peer.destroyed) {
           peer.destroy();
@@ -89,39 +91,26 @@ function RoomPage() {
       peersRef.current = [];
       setPeers([]);
 
-      users.forEach(userId => {
-        // CRITICAL: Don't connect to yourself
-        if (userId === socket.id) {
-          console.log("Skipping self-connection");
-          return;
-        }
-        
-        const peer = createPeer(userId, socket.id, localStreamRef.current, socket);
-        peersRef.current.push({ peerId: userId, peer });
-        setPeers(prev => [...prev, { peerId: userId, peer }]);
+      const newPeers = users.map(user => {
+        const peer = createPeer(user.id, socket.id, localStreamRef.current, socket);
+        return { peerId: user.id, peer, name: user.name };
       });
+      peersRef.current = newPeers;
+      setPeers(newPeers);
     });
 
-    // Someone else joined - I'm existing user, I wait for their offer
-    socket.on('user-joined', (userId) => {
-      console.log(`New user joined: ${userId}`);
-      console.log("My socket ID:", socket.id);
+    socket.on('user-joined', (user) => {
+      console.log(`New user joined: ${user.name} (${user.id})`);
       
-      // CRITICAL: Don't connect to yourself
-      if (userId === socket.id) {
-        console.log("Skipping self-connection in user-joined");
-        return;
-      }
-      
-      // Check if peer already exists to prevent duplicates
-      const existingPeer = findPeer(userId);
+      const existingPeer = findPeer(user.id);
       if (existingPeer) {
-        console.log(`Peer ${userId} already exists, skipping`);
+        console.log(`Peer ${user.id} already exists, skipping`);
         return;
       }
-      const peer = addPeer(userId, localStreamRef.current, socket);
-      peersRef.current.push({ peerId: userId, peer });
-      setPeers(prev => [...prev, { peerId: userId, peer }]);
+      const peer = addPeer(user.id, localStreamRef.current, socket);
+      const newPeerRef = { peerId: user.id, peer, name: user.name };
+      peersRef.current.push(newPeerRef);
+      setPeers(prev => [...prev, newPeerRef]);
     });
 
     socket.on('offer', (payload) => {
@@ -161,7 +150,6 @@ function RoomPage() {
     return () => {
       console.log("Cleaning up socket and peers");
       
-      // Destroy all peer connections
       peersRef.current.forEach(({ peer }) => {
         if (peer && !peer.destroyed) {
           peer.destroy();
@@ -170,7 +158,6 @@ function RoomPage() {
       peersRef.current = [];
       setPeers([]);
       
-      // Disconnect and close socket completely
       if (socket) {
         socket.removeAllListeners();
         if (socket.connected) {
@@ -180,8 +167,7 @@ function RoomPage() {
       }
       socketRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, localStream]); // localStream only triggers initial setup, socket reuse prevents duplicates
+  }, [roomId, localStream]);
 
   const toggleAudio = () => {
     const stream = localStreamRef.current;
@@ -205,7 +191,6 @@ function RoomPage() {
     }
   };
 
-  // Create peer as initiator (I'm calling them)
   function createPeer(userIdToSignal, callerId, stream, socket) {
     console.log(`Creating peer (initiator) for: ${userIdToSignal}`);
     const peer = new Peer({
@@ -232,22 +217,9 @@ function RoomPage() {
       }
     });
 
-    peer.on('connect', () => {
-      console.log(`✓ Peer connected: ${userIdToSignal}`);
-    });
-
-    peer.on('stream', (remoteStream) => {
-      console.log(`✓ Received stream from: ${userIdToSignal}`);
-    });
-
-    peer.on('error', (err) => {
-      console.error(`✗ Peer error with ${userIdToSignal}:`, err);
-    });
-
     return peer;
   }
 
-  // Add peer as receiver (they're calling me)
   function addPeer(userIdSignaling, stream, socket) {
     console.log(`Adding peer (receiver) for: ${userIdSignaling}`);
     const peer = new Peer({
@@ -274,18 +246,6 @@ function RoomPage() {
       }
     });
 
-    peer.on('connect', () => {
-      console.log(`✓ Peer connected: ${userIdSignaling}`);
-    });
-
-    peer.on('stream', (remoteStream) => {
-      console.log(`✓ Received stream from: ${userIdSignaling}`);
-    });
-
-    peer.on('error', (err) => {
-      console.error(`✗ Peer error with ${userIdSignaling}:`, err);
-    });
-
     return peer;
   }
 
@@ -307,7 +267,7 @@ function RoomPage() {
     <div className="App-header">
       <h1>Pinch Room: {roomId}</h1>
       <p style={{ fontSize: '14px', color: '#888' }}>
-        Your ID: {socketRef.current?.id || 'Connecting...'} | 
+        Your Name: {localUser.name || 'Assigning...'} | 
         Participants: {peers.length + 1}
       </p>
       
@@ -335,9 +295,9 @@ function RoomPage() {
           <h3 style={{ margin: '0 0 10px 0' }}>Connected Users ({peers.length + 1})</h3>
           <div style={{ textAlign: 'left' }}>
             <div style={{ padding: '8px', borderBottom: '1px solid #333' }}>
-              <strong>You</strong> - {socketRef.current?.id?.substring(0, 12) || 'Connecting...'}
+              <strong>You ({localUser.name || '...'})</strong>
             </div>
-            {peers.map(({ peerId }) => (
+            {peers.map(({ peerId, name }) => (
               <div key={peerId} style={{ 
                 padding: '8px', 
                 borderBottom: '1px solid #333',
@@ -345,7 +305,7 @@ function RoomPage() {
                 justifyContent: 'space-between',
                 alignItems: 'center'
               }}>
-                <span>Remote User - {peerId.substring(0, 12)}...</span>
+                <span>{name}</span>
                 <button 
                   onClick={() => removeUser(peerId)}
                   style={{
@@ -367,19 +327,19 @@ function RoomPage() {
 
       <div className="video-grid">
         <div className="video-container">
-          <h2>You (Local)</h2>
+          <h2>You ({localUser.name || '...'})</h2>
           <video ref={localVideoRef} autoPlay playsInline muted />
         </div>
 
-        {peers.map(({ peerId, peer }) => (
-          <RemoteVideo key={peerId} peerId={peerId} peer={peer} onRemove={() => removeUser(peerId)} />
+        {peers.map(({ peerId, peer, name }) => (
+          <RemoteVideo key={peerId} peerId={peerId} peer={peer} name={name} onRemove={() => removeUser(peerId)} />
         ))}
       </div>
     </div>
   );
 }
 
-const RemoteVideo = ({ peerId, peer, onRemove }) => {
+const RemoteVideo = ({ peerId, peer, name, onRemove }) => {
   const videoRef = useRef(null);
   const [hasStream, setHasStream] = useState(false);
 
@@ -407,9 +367,9 @@ const RemoteVideo = ({ peerId, peer, onRemove }) => {
 
   return (
     <div className="video-container" style={{ position: 'relative' }}>
-      <h2>Remote User</h2>
+      <h2>{name}</h2>
       <p style={{ fontSize: '12px', color: '#666' }}>
-        ID: {peerId.substring(0, 8)}... {hasStream ? '✓' : '⏳'}
+        {hasStream ? '✓' : '⏳'}
       </p>
       <video ref={videoRef} autoPlay playsInline />
       <button
