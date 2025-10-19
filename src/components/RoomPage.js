@@ -4,11 +4,6 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import '../App.css';
 
-const socket = io('https://pinch-server-app.vercel.app/', { 
-  path: "/socket.io/",
-  transports: ['polling', 'websocket']
-});
-
 // STUN servers for cross-network connectivity
 const ICE_SERVERS = {
   iceServers: [
@@ -25,6 +20,7 @@ function RoomPage() {
   const localVideoRef = useRef(null);
   const peersRef = useRef([]);
   const localStreamRef = useRef(null);
+  const socketRef = useRef(null);
   const { roomId } = useParams();
 
   // Get user media once on mount
@@ -56,14 +52,34 @@ function RoomPage() {
   useEffect(() => {
     if (!localStream) return;
 
-    console.log(`Joining room: ${roomId}`);
-    socket.emit('join-room', roomId);
+    // Create a fresh socket connection for this component instance
+    console.log("Creating new socket connection...");
+    const socket = io('https://pinch-server-app.vercel.app/', { 
+      path: "/socket.io/",
+      transports: ['polling', 'websocket']
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log(`Socket connected with ID: ${socket.id}`);
+      console.log(`Joining room: ${roomId}`);
+      socket.emit('join-room', roomId);
+    });
 
     // I'm joining - these are users already in the room, I initiate connection
     socket.on('existing-users', (users) => {
       console.log("Existing users in room:", users);
+      // Clear any existing peers before adding new ones
+      peersRef.current.forEach(({ peer }) => {
+        if (peer && !peer.destroyed) {
+          peer.destroy();
+        }
+      });
+      peersRef.current = [];
+      setPeers([]);
+
       users.forEach(userId => {
-        const peer = createPeer(userId, socket.id, localStream);
+        const peer = createPeer(userId, socket.id, localStream, socket);
         peersRef.current.push({ peerId: userId, peer });
         setPeers(prev => [...prev, { peerId: userId, peer }]);
       });
@@ -72,7 +88,13 @@ function RoomPage() {
     // Someone else joined - I'm existing user, I wait for their offer
     socket.on('user-joined', (userId) => {
       console.log(`New user joined: ${userId}`);
-      const peer = addPeer(userId, localStream);
+      // Check if peer already exists to prevent duplicates
+      const existingPeer = findPeer(userId);
+      if (existingPeer) {
+        console.log(`Peer ${userId} already exists, skipping`);
+        return;
+      }
+      const peer = addPeer(userId, localStream, socket);
       peersRef.current.push({ peerId: userId, peer });
       setPeers(prev => [...prev, { peerId: userId, peer }]);
     });
@@ -112,20 +134,21 @@ function RoomPage() {
     });
 
     return () => {
-      console.log("Cleaning up socket listeners");
-      socket.off('existing-users');
-      socket.off('user-joined');
-      socket.off('offer');
-      socket.off('answer');
-      socket.off('ice-candidate');
-      socket.off('user-disconnected');
+      console.log("Cleaning up socket and peers");
       
+      // Destroy all peer connections
       peersRef.current.forEach(({ peer }) => {
         if (peer && !peer.destroyed) {
           peer.destroy();
         }
       });
       peersRef.current = [];
+      setPeers([]);
+      
+      // Disconnect socket
+      if (socket && socket.connected) {
+        socket.disconnect();
+      }
     };
   }, [roomId, localStream]);
 
@@ -152,7 +175,7 @@ function RoomPage() {
   };
 
   // Create peer as initiator (I'm calling them)
-  function createPeer(userIdToSignal, callerId, stream) {
+  function createPeer(userIdToSignal, callerId, stream, socket) {
     console.log(`Creating peer (initiator) for: ${userIdToSignal}`);
     const peer = new Peer({
       initiator: true,
@@ -186,7 +209,7 @@ function RoomPage() {
   }
 
   // Add peer as receiver (they're calling me)
-  function addPeer(userIdSignaling, stream) {
+  function addPeer(userIdSignaling, stream, socket) {
     console.log(`Adding peer (receiver) for: ${userIdSignaling}`);
     const peer = new Peer({
       initiator: false,
