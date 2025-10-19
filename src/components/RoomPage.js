@@ -63,7 +63,6 @@ function RoomPage() {
     const socket = io('https://pinch-server-app.onrender.com/', { 
       path: "/socket.io/",
       transports: ['polling', 'websocket'],
-      forceNew: true,
       reconnection: false
     });
     socketRef.current = socket;
@@ -83,30 +82,28 @@ function RoomPage() {
     socket.on('existing-users', (users) => {
       console.log("Existing users in room:", users);
       
-      peersRef.current.forEach(({ peer }) => {
-        if (peer && !peer.destroyed) {
-          peer.destroy();
-        }
-      });
-      peersRef.current = [];
-      setPeers([]);
+      const newPeers = users
+        .filter(user => user.id !== socket.id && !findPeer(user.id))
+        .map(user => {
+          const peer = createPeer(user.id, socket.id, localStreamRef.current, socket);
+          return { peerId: user.id, peer, name: user.name };
+        });
 
-      const newPeers = users.map(user => {
-        const peer = createPeer(user.id, socket.id, localStreamRef.current, socket);
-        return { peerId: user.id, peer, name: user.name };
-      });
-      peersRef.current = newPeers;
-      setPeers(newPeers);
+      if (newPeers.length > 0) {
+        peersRef.current = [...peersRef.current, ...newPeers];
+        setPeers(prev => [...prev, ...newPeers]);
+      }
     });
 
     socket.on('user-joined', (user) => {
       console.log(`New user joined: ${user.name} (${user.id})`);
       
-      const existingPeer = findPeer(user.id);
-      if (existingPeer) {
+      if (user.id === socket.id) return;
+      if (findPeer(user.id)) {
         console.log(`Peer ${user.id} already exists, skipping`);
         return;
       }
+
       const peer = addPeer(user.id, localStreamRef.current, socket);
       const newPeerRef = { peerId: user.id, peer, name: user.name };
       peersRef.current.push(newPeerRef);
