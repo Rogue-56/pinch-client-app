@@ -323,7 +323,7 @@ function RoomPage() {
         setIsScreenSharing(true);
         socketRef.current.emit('start-screen-share');
 
-        const newScreenPeers = peers.map(p => {
+        const newScreenPeers = peersRef.current.map(p => {
           const peer = createScreenPeer(p.peerId, socketRef.current.id, stream, socketRef.current);
           return { peerId: p.peerId, peer, name: p.name };
         });
