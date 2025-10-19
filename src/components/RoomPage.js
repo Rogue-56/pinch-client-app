@@ -145,6 +145,13 @@ function RoomPage() {
       const newPeerRef = { peerId: user.id, peer, name: user.name };
       peersRef.current.push(newPeerRef);
       setPeers(prev => [...prev, newPeerRef]);
+
+      if (isScreenSharing) {
+        const screenPeer = createScreenPeer(user.id, socket.id, screenStreamRef.current, socket);
+        const newScreenPeerRef = { peerId: user.id, peer: screenPeer, name: user.name };
+        screenPeersRef.current.push(newScreenPeerRef);
+        setScreenPeers(prev => [...prev, newScreenPeerRef]);
+      }
     });
 
     socket.on('chat-history', (history) => {
@@ -194,7 +201,7 @@ function RoomPage() {
     // Screen sharing events
     socket.on('user-started-screen-share', ({ id, name }) => {
       console.log(`User ${name} (${id}) started screen sharing`);
-      const peer = addScreenPeer(id, screenStreamRef.current, socket);
+      const peer = addScreenPeer(id, socket);
       const newPeerRef = { peerId: id, peer, name };
       screenPeersRef.current.push(newPeerRef);
       setScreenPeers(prev => [...prev, newPeerRef]);
@@ -262,7 +269,7 @@ function RoomPage() {
       }
       socketRef.current = null;
     };
-  }, [roomId, localStream]);
+  }, [roomId, localStream, isScreenSharing]);
 
   const toggleAudio = () => {
     const stream = localStreamRef.current;
@@ -426,12 +433,11 @@ function RoomPage() {
     return peer;
   }
 
-  function addScreenPeer(userIdSignaling, stream, socket) {
+  function addScreenPeer(userIdSignaling, socket) {
     console.log(`Adding screen peer (receiver) for: ${userIdSignaling}`);
     const peer = new Peer({
       initiator: false,
       trickle: true,
-      stream: stream,
       config: ICE_SERVERS
     });
 
