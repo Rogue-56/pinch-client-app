@@ -6,9 +6,16 @@ import '../App.css';
 
 const socket = io('https://pinch-server-app.vercel.app/', { 
   path: "/socket.io/",
-  transports: ['polling', 'websocket'],
-  autoConnect: false 
+  transports: ['polling', 'websocket']
 });
+
+// STUN servers for cross-network connectivity
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]
+};
 
 function RoomPage() {
   const [localStream, setLocalStream] = useState(null);
@@ -17,93 +24,95 @@ function RoomPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const localVideoRef = useRef(null);
   const peersRef = useRef([]);
-  const localStreamRef = useRef(null); 
+  const localStreamRef = useRef(null);
   const { roomId } = useParams();
 
+  // Get user media once on mount
   useEffect(() => {
-    console.log("Attempting to get user media...");
+    console.log("Getting user media...");
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
-        console.log("Successfully got user media.");
-        setLocalStream(stream); 
+        console.log("Got user media successfully");
+        setLocalStream(stream);
         localStreamRef.current = stream;
         if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream; 
+          localVideoRef.current.srcObject = stream;
         }
       })
       .catch(err => {
         console.error('Error getting media stream:', err);
         alert('Could not get camera/mic permission');
       });
-  }, []); 
-
-  useEffect(() => {
-    if (localStream) {
-      console.log("Local stream available, connecting to socket...");
-      socket.connect(); 
-      
-      console.log(`Emitting 'join-room' for room: ${roomId}`);
-      socket.emit('join-room', roomId);
-
-      socket.on('existing-users', (users) => {
-        console.log("Received 'existing-users':", users);
-        const newPeers = [];
-        users.forEach(userId => {
-          const peer = createPeer(userId, socket.id, localStream);
-          peersRef.current.push({ peerId: userId, peer });
-          newPeers.push({ peerId: userId, peer });
-        });
-        setPeers(newPeers);
-      });
-
-      socket.on('user-joined', (userId) => {
-        console.log(`'user-joined' event received for user: ${userId}`);
-        const peer = addPeer(userId, socket.id, localStream);
-        peersRef.current.push({ peerId: userId, peer });
-        setPeers(prevPeers => [...prevPeers, { peerId: userId, peer }]);
-      });
-
-      socket.on('offer', (payload) => {
-        console.log("Received 'offer' from:", payload.from);
-        const peerRef = findPeer(payload.from);
-        if (peerRef && !peerRef.peer.destroyed) {
-          peerRef.peer.signal(payload.sdp);
-        }
-      });
-
-      socket.on('answer', (payload) => {
-        console.log("Received 'answer' from:", payload.from);
-        const peerRef = findPeer(payload.from);
-        if (peerRef && !peerRef.peer.destroyed) {
-          peerRef.peer.signal(payload.sdp);
-        }
-      });
-
-      socket.on('ice-candidate', (payload) => {
-        console.log("Received 'ice-candidate' from:", payload.from);
-        const peerRef = findPeer(payload.from);
-        if (peerRef && !peerRef.peer.destroyed) {
-          peerRef.peer.signal({
-            type: 'candidate',
-            candidate: payload.candidate,
-          });
-        }
-      });
-
-      socket.on('user-disconnected', (userId) => {
-        console.log(`'user-disconnected' event for user: ${userId}`);
-        const peerRef = findPeer(userId);
-        if (peerRef) {
-          peerRef.peer.destroy();
-        }
-        peersRef.current = peersRef.current.filter(p => p.peerId !== userId);
-        setPeers(prevPeers => prevPeers.filter(p => p.peerId !== userId));
-      });
-    }
 
     return () => {
-      console.log("Cleaning up and disconnecting socket...");
-      socket.disconnect(); 
+      // Cleanup media stream on unmount
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  // Setup socket listeners and join room once we have local stream
+  useEffect(() => {
+    if (!localStream) return;
+
+    console.log(`Joining room: ${roomId}`);
+    socket.emit('join-room', roomId);
+
+    // I'm joining - these are users already in the room, I initiate connection
+    socket.on('existing-users', (users) => {
+      console.log("Existing users in room:", users);
+      users.forEach(userId => {
+        const peer = createPeer(userId, socket.id, localStream);
+        peersRef.current.push({ peerId: userId, peer });
+        setPeers(prev => [...prev, { peerId: userId, peer }]);
+      });
+    });
+
+    // Someone else joined - I'm existing user, I wait for their offer
+    socket.on('user-joined', (userId) => {
+      console.log(`New user joined: ${userId}`);
+      const peer = addPeer(userId, localStream);
+      peersRef.current.push({ peerId: userId, peer });
+      setPeers(prev => [...prev, { peerId: userId, peer }]);
+    });
+
+    socket.on('offer', (payload) => {
+      console.log(`Received offer from: ${payload.from}`);
+      const peerRef = findPeer(payload.from);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.signal(payload.sdp);
+      }
+    });
+
+    socket.on('answer', (payload) => {
+      console.log(`Received answer from: ${payload.from}`);
+      const peerRef = findPeer(payload.from);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.signal(payload.sdp);
+      }
+    });
+
+    socket.on('ice-candidate', (payload) => {
+      console.log(`Received ICE candidate from: ${payload.from}`);
+      const peerRef = findPeer(payload.from);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.signal(payload.candidate);
+      }
+    });
+
+    socket.on('user-disconnected', (userId) => {
+      console.log(`User disconnected: ${userId}`);
+      const peerRef = findPeer(userId);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.destroy();
+      }
+      peersRef.current = peersRef.current.filter(p => p.peerId !== userId);
+      setPeers(prev => prev.filter(p => p.peerId !== userId));
+    });
+
+    return () => {
+      console.log("Cleaning up socket listeners");
       socket.off('existing-users');
       socket.off('user-joined');
       socket.off('offer');
@@ -111,11 +120,14 @@ function RoomPage() {
       socket.off('ice-candidate');
       socket.off('user-disconnected');
       
-      peersRef.current.forEach(peerRef => peerRef.peer.destroy());
+      peersRef.current.forEach(({ peer }) => {
+        if (peer && !peer.destroyed) {
+          peer.destroy();
+        }
+      });
       peersRef.current = [];
-      setPeers([]);
     };
-  }, [roomId, localStream]); 
+  }, [roomId, localStream]);
 
   const toggleAudio = () => {
     const stream = localStreamRef.current;
@@ -139,15 +151,19 @@ function RoomPage() {
     }
   };
 
+  // Create peer as initiator (I'm calling them)
   function createPeer(userIdToSignal, callerId, stream) {
+    console.log(`Creating peer (initiator) for: ${userIdToSignal}`);
     const peer = new Peer({
-      initiator: true, 
+      initiator: true,
       trickle: true,
       stream: stream,
+      config: ICE_SERVERS
     });
 
     peer.on('signal', (data) => {
       if (data.type === 'offer') {
+        console.log(`Sending offer to: ${userIdToSignal}`);
         socket.emit('offer', {
           target: userIdToSignal,
           from: callerId,
@@ -157,35 +173,49 @@ function RoomPage() {
         socket.emit('ice-candidate', {
           target: userIdToSignal,
           from: callerId,
-          candidate: data.candidate,
+          candidate: data,
         });
       }
     });
+
+    peer.on('error', (err) => {
+      console.error(`Peer error with ${userIdToSignal}:`, err);
+    });
+
     return peer;
   }
 
-  function addPeer(userIdSignaling, callerId, stream) {
+  // Add peer as receiver (they're calling me)
+  function addPeer(userIdSignaling, stream) {
+    console.log(`Adding peer (receiver) for: ${userIdSignaling}`);
     const peer = new Peer({
-      initiator: false, 
+      initiator: false,
       trickle: true,
       stream: stream,
+      config: ICE_SERVERS
     });
 
     peer.on('signal', (data) => {
       if (data.type === 'answer') {
+        console.log(`Sending answer to: ${userIdSignaling}`);
         socket.emit('answer', {
           target: userIdSignaling,
-          from: callerId,
+          from: socket.id,
           sdp: data,
         });
       } else if (data.candidate) {
         socket.emit('ice-candidate', {
           target: userIdSignaling,
-          from: callerId,
-          candidate: data.candidate,
+          from: socket.id,
+          candidate: data,
         });
       }
     });
+
+    peer.on('error', (err) => {
+      console.error(`Peer error with ${userIdSignaling}:`, err);
+    });
+
     return peer;
   }
 
@@ -197,7 +227,6 @@ function RoomPage() {
     <div className="App-header">
       <h1>Pinch Room: {roomId}</h1>
       
-      {}
       <div className="controls-container">
         <button onClick={toggleAudio}>
           {isAudioEnabled ? 'Mute' : 'Unmute'}
@@ -206,7 +235,6 @@ function RoomPage() {
           {isVideoEnabled ? 'Stop Video' : 'Start Video'}
         </button>
       </div>
-      {}
 
       <div className="video-grid">
         <div className="video-container">
@@ -214,11 +242,9 @@ function RoomPage() {
           <video ref={localVideoRef} autoPlay playsInline muted />
         </div>
 
-        {peers.map(({ peerId, peer }) => {
-          return (
-            <RemoteVideo key={peerId} peer={peer} />
-          );
-        })}
+        {peers.map(({ peerId, peer }) => (
+          <RemoteVideo key={peerId} peer={peer} />
+        ))}
       </div>
     </div>
   );
@@ -229,21 +255,22 @@ const RemoteVideo = ({ peer }) => {
 
   useEffect(() => {
     peer.on('stream', (stream) => {
+      console.log("Received remote stream");
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     });
 
     peer.on('close', () => {
+      console.log("Peer connection closed");
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
     });
 
     peer.on('error', (err) => {
-      console.error('Peer error:', err);
+      console.error('Remote peer error:', err);
     });
-
   }, [peer]);
 
   return (
