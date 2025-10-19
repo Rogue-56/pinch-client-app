@@ -17,6 +17,7 @@ function RoomPage() {
   const [peers, setPeers] = useState([]);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [showUserList, setShowUserList] = useState(false);
   const localVideoRef = useRef(null);
   const peersRef = useRef([]);
   const localStreamRef = useRef(null);
@@ -219,8 +220,16 @@ function RoomPage() {
       }
     });
 
+    peer.on('connect', () => {
+      console.log(`✓ Peer connected: ${userIdToSignal}`);
+    });
+
+    peer.on('stream', (remoteStream) => {
+      console.log(`✓ Received stream from: ${userIdToSignal}`);
+    });
+
     peer.on('error', (err) => {
-      console.error(`Peer error with ${userIdToSignal}:`, err);
+      console.error(`✗ Peer error with ${userIdToSignal}:`, err);
     });
 
     return peer;
@@ -253,8 +262,16 @@ function RoomPage() {
       }
     });
 
+    peer.on('connect', () => {
+      console.log(`✓ Peer connected: ${userIdSignaling}`);
+    });
+
+    peer.on('stream', (remoteStream) => {
+      console.log(`✓ Received stream from: ${userIdSignaling}`);
+    });
+
     peer.on('error', (err) => {
-      console.error(`Peer error with ${userIdSignaling}:`, err);
+      console.error(`✗ Peer error with ${userIdSignaling}:`, err);
     });
 
     return peer;
@@ -264,9 +281,23 @@ function RoomPage() {
     return peersRef.current.find(p => p.peerId === userId);
   }
 
+  const removeUser = (peerId) => {
+    console.log(`Manually removing user: ${peerId}`);
+    const peerRef = findPeer(peerId);
+    if (peerRef && !peerRef.peer.destroyed) {
+      peerRef.peer.destroy();
+    }
+    peersRef.current = peersRef.current.filter(p => p.peerId !== peerId);
+    setPeers(prev => prev.filter(p => p.peerId !== peerId));
+  };
+
   return (
     <div className="App-header">
       <h1>Pinch Room: {roomId}</h1>
+      <p style={{ fontSize: '14px', color: '#888' }}>
+        Your ID: {socketRef.current?.id || 'Connecting...'} | 
+        Participants: {peers.length + 1}
+      </p>
       
       <div className="controls-container">
         <button onClick={toggleAudio}>
@@ -275,49 +306,117 @@ function RoomPage() {
         <button onClick={toggleVideo}>
           {isVideoEnabled ? 'Stop Video' : 'Start Video'}
         </button>
+        <button onClick={() => setShowUserList(!showUserList)}>
+          {showUserList ? 'Hide Users' : 'Show Users'}
+        </button>
       </div>
+
+      {showUserList && (
+        <div style={{
+          background: '#1a1a1a',
+          padding: '15px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          maxWidth: '400px',
+          margin: '0 auto 20px'
+        }}>
+          <h3 style={{ margin: '0 0 10px 0' }}>Connected Users ({peers.length + 1})</h3>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ padding: '8px', borderBottom: '1px solid #333' }}>
+              <strong>You</strong> - {socketRef.current?.id?.substring(0, 12) || 'Connecting...'}
+            </div>
+            {peers.map(({ peerId }) => (
+              <div key={peerId} style={{ 
+                padding: '8px', 
+                borderBottom: '1px solid #333',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span>Remote User - {peerId.substring(0, 12)}...</span>
+                <button 
+                  onClick={() => removeUser(peerId)}
+                  style={{
+                    background: '#d32f2f',
+                    border: 'none',
+                    padding: '4px 12px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="video-grid">
         <div className="video-container">
-          <h2>My Video</h2>
+          <h2>You (Local)</h2>
           <video ref={localVideoRef} autoPlay playsInline muted />
         </div>
 
         {peers.map(({ peerId, peer }) => (
-          <RemoteVideo key={peerId} peer={peer} />
+          <RemoteVideo key={peerId} peerId={peerId} peer={peer} onRemove={() => removeUser(peerId)} />
         ))}
       </div>
     </div>
   );
 }
 
-const RemoteVideo = ({ peer }) => {
+const RemoteVideo = ({ peerId, peer, onRemove }) => {
   const videoRef = useRef(null);
+  const [hasStream, setHasStream] = useState(false);
 
   useEffect(() => {
     peer.on('stream', (stream) => {
-      console.log("Received remote stream");
+      console.log(`Received remote stream from ${peerId}`);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        setHasStream(true);
       }
     });
 
     peer.on('close', () => {
-      console.log("Peer connection closed");
+      console.log(`Peer connection closed: ${peerId}`);
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
+      setHasStream(false);
     });
 
     peer.on('error', (err) => {
-      console.error('Remote peer error:', err);
+      console.error(`Remote peer error (${peerId}):`, err);
     });
-  }, [peer]);
+  }, [peer, peerId]);
 
   return (
-    <div className="video-container">
+    <div className="video-container" style={{ position: 'relative' }}>
       <h2>Remote User</h2>
+      <p style={{ fontSize: '12px', color: '#666' }}>
+        ID: {peerId.substring(0, 8)}... {hasStream ? '✓' : '⏳'}
+      </p>
       <video ref={videoRef} autoPlay playsInline />
+      <button
+        onClick={onRemove}
+        style={{
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+          background: 'rgba(211, 47, 47, 0.9)',
+          border: 'none',
+          padding: '6px 12px',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          color: 'white'
+        }}
+      >
+        Remove
+      </button>
     </div>
   );
 };
