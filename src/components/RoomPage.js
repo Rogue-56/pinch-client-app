@@ -23,7 +23,16 @@ function RoomPage() {
   const peersRef = useRef([]);
   const localStreamRef = useRef(null);
   const socketRef = useRef(null);
+  const notificationSoundRef = useRef(null);
   const { roomId } = useParams();
+
+  const playNotificationSound = () => {
+    if (notificationSoundRef.current) {
+      notificationSoundRef.current.play().catch(error => {
+        console.error("Audio playback failed:", error);
+      });
+    }
+  };
 
   // Get user media once on mount
   useEffect(() => {
@@ -72,6 +81,7 @@ function RoomPage() {
       setLocalUser(prev => ({ ...prev, id: socket.id }));
       console.log(`Joining room: ${roomId}`);
       socket.emit('join-room', roomId);
+      playNotificationSound();
     });
 
     socket.on('name-assigned', (name) => {
@@ -97,6 +107,7 @@ function RoomPage() {
 
     socket.on('user-joined', (user) => {
       console.log(`New user joined: ${user.name} (${user.id})`);
+      playNotificationSound();
       
       if (user.id === socket.id) return;
       if (findPeer(user.id)) {
@@ -262,6 +273,7 @@ function RoomPage() {
 
   return (
     <div className="App-header">
+      <audio ref={notificationSoundRef} src="/mixkit-long-pop-2358.wav" preload="auto" />
       <h1>Pinch Room: {roomId}</h1>
       <p style={{ fontSize: '14px', color: '#888' }}>
         Your Name: {localUser.name || 'Assigning...'} | 
