@@ -51,7 +51,13 @@ function RoomPage() {
 
   // Setup socket listeners and join room once we have local stream
   useEffect(() => {
-    if (!localStream) return;
+    if (!localStream || !localStreamRef.current) return;
+    
+    // Prevent creating multiple sockets
+    if (socketRef.current && socketRef.current.connected) {
+      console.log("Socket already exists, reusing:", socketRef.current.id);
+      return;
+    }
 
     // Create a fresh socket connection for this component instance
     console.log("Creating new socket connection...");
@@ -90,7 +96,7 @@ function RoomPage() {
           return;
         }
         
-        const peer = createPeer(userId, socket.id, localStream, socket);
+        const peer = createPeer(userId, socket.id, localStreamRef.current, socket);
         peersRef.current.push({ peerId: userId, peer });
         setPeers(prev => [...prev, { peerId: userId, peer }]);
       });
@@ -113,7 +119,7 @@ function RoomPage() {
         console.log(`Peer ${userId} already exists, skipping`);
         return;
       }
-      const peer = addPeer(userId, localStream, socket);
+      const peer = addPeer(userId, localStreamRef.current, socket);
       peersRef.current.push({ peerId: userId, peer });
       setPeers(prev => [...prev, { peerId: userId, peer }]);
     });
@@ -164,12 +170,18 @@ function RoomPage() {
       peersRef.current = [];
       setPeers([]);
       
-      // Disconnect socket
-      if (socket && socket.connected) {
-        socket.disconnect();
+      // Disconnect and close socket completely
+      if (socket) {
+        socket.removeAllListeners();
+        if (socket.connected) {
+          socket.disconnect();
+        }
+        socket.close();
       }
+      socketRef.current = null;
     };
-  }, [roomId, localStream]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, localStream]); // localStream only triggers initial setup, socket reuse prevents duplicates
 
   const toggleAudio = () => {
     const stream = localStreamRef.current;
