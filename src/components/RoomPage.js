@@ -21,9 +21,15 @@ function RoomPage() {
   const [localUser, setLocalUser] = useState({ id: null, name: null });
   const [message, setMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState(null);
+  const [screenPeers, setScreenPeers] = useState([]);
+
   const localVideoRef = useRef(null);
   const peersRef = useRef([]);
+  const screenPeersRef = useRef([]);
   const localStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
   const socketRef = useRef(null);
   const userJoinedSoundRef = useRef(null);
   const userLeftSoundRef = useRef(null);
@@ -185,6 +191,49 @@ function RoomPage() {
       setPeers(prev => prev.filter(p => p.peerId !== userId));
     });
 
+    // Screen sharing events
+    socket.on('user-started-screen-share', ({ id, name }) => {
+      console.log(`User ${name} (${id}) started screen sharing`);
+      const peer = addScreenPeer(id, screenStreamRef.current, socket);
+      const newPeerRef = { peerId: id, peer, name };
+      screenPeersRef.current.push(newPeerRef);
+      setScreenPeers(prev => [...prev, newPeerRef]);
+    });
+
+    socket.on('user-stopped-screen-share', ({ id }) => {
+      console.log(`User ${id} stopped screen sharing`);
+      const peerRef = findScreenPeer(id);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.destroy();
+      }
+      screenPeersRef.current = screenPeersRef.current.filter(p => p.peerId !== id);
+      setScreenPeers(prev => prev.filter(p => p.peerId !== id));
+    });
+
+    socket.on('screen-offer', (payload) => {
+      console.log(`Received screen offer from: ${payload.from}`);
+      const peerRef = findScreenPeer(payload.from);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.signal(payload.sdp);
+      }
+    });
+
+    socket.on('screen-answer', (payload) => {
+      console.log(`Received screen answer from: ${payload.from}`);
+      const peerRef = findScreenPeer(payload.from);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.signal(payload.sdp);
+      }
+    });
+
+    socket.on('screen-ice-candidate', (payload) => {
+      console.log(`Received screen ICE candidate from: ${payload.from}`);
+      const peerRef = findScreenPeer(payload.from);
+      if (peerRef && !peerRef.peer.destroyed) {
+        peerRef.peer.signal(payload.candidate);
+      }
+    });
+
     return () => {
       console.log("Cleaning up socket and peers");
       
@@ -195,6 +244,14 @@ function RoomPage() {
       });
       peersRef.current = [];
       setPeers([]);
+
+      screenPeersRef.current.forEach(({ peer }) => {
+        if (peer && !peer.destroyed) {
+          peer.destroy();
+        }
+      });
+      screenPeersRef.current = [];
+      setScreenPeers([]);
       
       if (socket) {
         socket.removeAllListeners();
@@ -225,6 +282,47 @@ function RoomPage() {
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoEnabled(videoTrack.enabled);
+      }
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    if (isScreenSharing) {
+      // Stop screen sharing
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      socketRef.current.emit('stop-screen-share');
+      setScreenStream(null);
+      screenStreamRef.current = null;
+      setIsScreenSharing(false);
+      // Clean up screen peers
+      screenPeersRef.current.forEach(({ peer }) => {
+        if (peer && !peer.destroyed) {
+          peer.destroy();
+        }
+      });
+      screenPeersRef.current = [];
+      setScreenPeers([]);
+    } else {
+      // Start screen sharing
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        setScreenStream(stream);
+        screenStreamRef.current = stream;
+        setIsScreenSharing(true);
+        socketRef.current.emit('start-screen-share');
+
+        const newScreenPeers = peers.map(p => {
+          const peer = createScreenPeer(p.peerId, socketRef.current.id, stream, socketRef.current);
+          return { peerId: p.peerId, peer, name: p.name };
+        });
+        screenPeersRef.current = newScreenPeers;
+        setScreenPeers(newScreenPeers);
+
+        stream.getVideoTracks()[0].onended = () => {
+          toggleScreenShare();
+        };
+      } catch (err) {
+        console.error("Error starting screen share:", err);
       }
     }
   };
@@ -299,6 +397,68 @@ function RoomPage() {
     return peersRef.current.find(p => p.peerId === userId);
   }
 
+  function createScreenPeer(userIdToSignal, callerId, stream, socket) {
+    console.log(`Creating screen peer (initiator) for: ${userIdToSignal}`);
+    const peer = new Peer({
+      initiator: true,
+      trickle: true,
+      stream: stream,
+      config: ICE_SERVERS
+    });
+
+    peer.on('signal', (data) => {
+      if (data.type === 'offer') {
+        console.log(`Sending screen offer to: ${userIdToSignal}`);
+        socket.emit('screen-offer', {
+          target: userIdToSignal,
+          from: callerId,
+          sdp: data,
+        });
+      } else if (data.candidate) {
+        socket.emit('screen-ice-candidate', {
+          target: userIdToSignal,
+          from: callerId,
+          candidate: data,
+        });
+      }
+    });
+
+    return peer;
+  }
+
+  function addScreenPeer(userIdSignaling, stream, socket) {
+    console.log(`Adding screen peer (receiver) for: ${userIdSignaling}`);
+    const peer = new Peer({
+      initiator: false,
+      trickle: true,
+      stream: stream,
+      config: ICE_SERVERS
+    });
+
+    peer.on('signal', (data) => {
+      if (data.type === 'answer') {
+        console.log(`Sending screen answer to: ${userIdSignaling}`);
+        socket.emit('screen-answer', {
+          target: userIdSignaling,
+          from: socket.id,
+          sdp: data,
+        });
+      } else if (data.candidate) {
+        socket.emit('screen-ice-candidate', {
+          target: userIdSignaling,
+          from: socket.id,
+          candidate: data,
+        });
+      }
+    });
+
+    return peer;
+  }
+
+  function findScreenPeer(userId) {
+    return screenPeersRef.current.find(p => p.peerId === userId);
+  }
+
   const removeUser = (peerId) => {
     console.log(`Manually removing user: ${peerId}`);
     const peerRef = findPeer(peerId);
@@ -326,6 +486,9 @@ function RoomPage() {
         </button>
         <button onClick={toggleVideo}>
           {isVideoEnabled ? 'Stop Video' : 'Start Video'}
+        </button>
+        <button onClick={toggleScreenShare}>
+          {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
         </button>
         <button onClick={() => setShowUserList(!showUserList)}>
           {showUserList ? 'Hide Users' : 'Show Users'}
@@ -382,6 +545,9 @@ function RoomPage() {
 
         {peers.map(({ peerId, peer, name }) => (
           <RemoteVideo key={peerId} peerId={peerId} peer={peer} name={name} onRemove={() => removeUser(peerId)} />
+        ))}
+        {screenPeers.map(({ peerId, peer, name }) => (
+          <ScreenShareVideo key={`screen-${peerId}`} peerId={peerId} peer={peer} name={`${name}'s Screen`} />
         ))}
       </div>
 
@@ -457,6 +623,26 @@ const RemoteVideo = ({ peerId, peer, name, onRemove }) => {
       >
         Remove
       </button>
+    </div>
+  );
+};
+
+const ScreenShareVideo = ({ peerId, peer, name }) => {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    peer.on('stream', (stream) => {
+      console.log(`Received screen share stream from ${peerId}`);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    });
+  }, [peer, peerId]);
+
+  return (
+    <div className="video-container">
+      <h2>{name}</h2>
+      <video ref={videoRef} autoPlay playsInline />
     </div>
   );
 };
