@@ -25,12 +25,30 @@ function RoomPage() {
   const peersRef = useRef([]);
   const localStreamRef = useRef(null);
   const socketRef = useRef(null);
-  const notificationSoundRef = useRef(null);
+  const userJoinedSoundRef = useRef(null);
+  const userLeftSoundRef = useRef(null);
+  const newMessageSoundRef = useRef(null);
   const { roomId } = useParams();
 
-  const playNotificationSound = () => {
-    if (notificationSoundRef.current) {
-      notificationSoundRef.current.play().catch(error => {
+  const playUserJoinedSound = () => {
+    if (userJoinedSoundRef.current) {
+      userJoinedSoundRef.current.play().catch(error => {
+        console.error("Audio playback failed:", error);
+      });
+    }
+  };
+
+  const playUserLeftSound = () => {
+    if (userLeftSoundRef.current) {
+      userLeftSoundRef.current.play().catch(error => {
+        console.error("Audio playback failed:", error);
+      });
+    }
+  };
+
+  const playNewMessageSound = () => {
+    if (newMessageSoundRef.current) {
+      newMessageSoundRef.current.play().catch(error => {
         console.error("Audio playback failed:", error);
       });
     }
@@ -83,7 +101,7 @@ function RoomPage() {
       setLocalUser(prev => ({ ...prev, id: socket.id }));
       console.log(`Joining room: ${roomId}`);
       socket.emit('join-room', roomId);
-      playNotificationSound();
+      playUserJoinedSound();
     });
 
     socket.on('name-assigned', (name) => {
@@ -109,7 +127,7 @@ function RoomPage() {
 
     socket.on('user-joined', (user) => {
       console.log(`New user joined: ${user.name} (${user.id})`);
-      playNotificationSound();
+      playUserJoinedSound();
       
       if (user.id === socket.id) return;
       if (findPeer(user.id)) {
@@ -129,6 +147,7 @@ function RoomPage() {
 
     socket.on('new-message', (message) => {
       setChatHistory(prev => [...prev, message]);
+      playNewMessageSound();
     });
 
     socket.on('offer', (payload) => {
@@ -157,6 +176,7 @@ function RoomPage() {
 
     socket.on('user-disconnected', (userId) => {
       console.log(`User disconnected: ${userId}`);
+      playUserLeftSound();
       const peerRef = findPeer(userId);
       if (peerRef && !peerRef.peer.destroyed) {
         peerRef.peer.destroy();
@@ -291,7 +311,9 @@ function RoomPage() {
 
   return (
     <div className="App-header">
-      <audio ref={notificationSoundRef} src="/mixkit-correct-answer-tone-2870.wav" preload="auto" />
+      <audio ref={userJoinedSoundRef} src="/mixkit-correct-answer-tone-2870.wav" preload="auto" />
+      <audio ref={userLeftSoundRef} src="/mixkit-long-pop-2358.wav" preload="auto" />
+      <audio ref={newMessageSoundRef} src="/new-notification-08-352461.mp3" preload="auto" />
       <h1>Pinch Room: {roomId}</h1>
       <p style={{ fontSize: '14px', color: '#888' }}>
         Your Name: {localUser.name || 'Assigning...'} | 
