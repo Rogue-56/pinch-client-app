@@ -1,3 +1,7 @@
+body {
+  font-family: 'Inter', sans-serif;
+}
+
 .App {
   text-align: center;
 }
@@ -22,10 +26,22 @@
   justify-content: center;
   font-size: calc(10px + 2vmin);
   color: white;
+  font-family: 'Inter', sans-serif;
+}
+
+.App-header h1 {
+  font-weight: 700;
+  font-size: 2.5rem;
+}
+
+.App-header p {
+  font-weight: 400;
+  font-size: 1.1rem;
+  color: #cccccc;
 }
 
 .App-link {
-  color: #61dafb;
+  color: #4a90e2;
 }
 
 @keyframes App-logo-spin {
@@ -59,26 +75,27 @@ video {
   justify-content: center;
 }
 
-.controls-container button {
+.controls-container button, .chat-input-form button {
   font-size: 16px;
-  padding: 8px 12px;
+  padding: 8px 16px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid #cccccc;
   cursor: pointer;
-  background-color: #61dafb;
+  background-color: #ffffff;
   color: #282c34;
-  font-weight: bold;
+  font-weight: 500;
+  transition: background-color 0.2s ease-in-out;
 }
 
-.controls-container button:hover {
-  background-color: #ffffff;
+.controls-container button:hover, .chat-input-form button:hover {
+  background-color: #f2f2f2;
 }
 
 .chat-container {
   width: 80%;
   max-width: 800px;
   margin-top: 20px;
-  border: 1px solid #61dafb;
+  border: 1px solid #4a90e2;
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -110,20 +127,13 @@ video {
   flex-grow: 1;
   padding: 10px;
   border-radius: 5px;
-  border: 1px solid #61dafb;
+  border: 1px solid #4a90e2;
   background-color: #282c34;
   color: white;
   font-size: 16px;
+  font-family: 'Inter', sans-serif;
 }
 
 .chat-input-form button {
   margin-left: 10px;
-  font-size: 16px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  background-color: #61dafb;
-  color: #282c34;
-  font-weight: bold;
 }
