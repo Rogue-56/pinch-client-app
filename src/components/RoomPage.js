@@ -19,6 +19,8 @@ function RoomPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [showUserList, setShowUserList] = useState(false);
   const [localUser, setLocalUser] = useState({ id: null, name: null });
+  const [message, setMessage] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
   const localVideoRef = useRef(null);
   const peersRef = useRef([]);
   const localStreamRef = useRef(null);
@@ -121,6 +123,14 @@ function RoomPage() {
       setPeers(prev => [...prev, newPeerRef]);
     });
 
+    socket.on('chat-history', (history) => {
+      setChatHistory(history);
+    });
+
+    socket.on('new-message', (message) => {
+      setChatHistory(prev => [...prev, message]);
+    });
+
     socket.on('offer', (payload) => {
       console.log(`Received offer from: ${payload.from}`);
       const peerRef = findPeer(payload.from);
@@ -196,6 +206,14 @@ function RoomPage() {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoEnabled(videoTrack.enabled);
       }
+    }
+  };
+
+  const sendMessage = (e) => {
+    e.preventDefault();
+    if (message.trim() && socketRef.current) {
+      socketRef.current.emit('send-message', message);
+      setMessage('');
     }
   };
 
@@ -343,6 +361,25 @@ function RoomPage() {
         {peers.map(({ peerId, peer, name }) => (
           <RemoteVideo key={peerId} peerId={peerId} peer={peer} name={name} onRemove={() => removeUser(peerId)} />
         ))}
+      </div>
+
+      <div className="chat-container">
+        <div className="chat-history">
+          {chatHistory.map((msg, index) => (
+            <div key={index} className="chat-message">
+              <strong>{msg.name}:</strong> {msg.message}
+            </div>
+          ))}
+        </div>
+        <form onSubmit={sendMessage} className="chat-input-form">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type a message..."
+          />
+          <button type="submit">Send</button>
+        </form>
       </div>
     </div>
   );
