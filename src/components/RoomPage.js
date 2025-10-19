@@ -295,7 +295,7 @@ function RoomPage() {
           <h3 style={{ margin: '0 0 10px 0' }}>Connected Users ({peers.length + 1})</h3>
           <div style={{ textAlign: 'left' }}>
             <div style={{ padding: '8px', borderBottom: '1px solid #333' }}>
-              <strong>You ({localUser.name || '...'})</strong>
+              <strong>You ({localUser.name})</strong>
             </div>
             {peers.map(({ peerId, name }) => (
               <div key={peerId} style={{ 
