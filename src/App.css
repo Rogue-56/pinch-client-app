@@ -92,14 +92,25 @@ video {
 }
 
 .chat-container {
-  width: 80%;
-  max-width: 800px;
-  margin-top: 20px;
-  border: 1px solid #4a90e2;
-  border-radius: 8px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 350px;
+  max-width: 90vw;
+  background-color: rgba(40, 44, 52, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-left: 1px solid #444;
   display: flex;
   flex-direction: column;
-  height: 400px;
+  z-index: 100;
+  transform: translateX(100%);
+  transition: transform 0.3s ease-in-out;
+}
+
+.chat-container.open {
+  transform: translateX(0);
 }
 
 .chat-history {
@@ -113,8 +124,8 @@ video {
 
 .chat-message {
   text-align: left;
-  padding: 5px 10px;
-  background-color: #3a3f47;
+  padding: 8px 12px;
+  background-color: rgba(58, 63, 71, 0.8);
   border-radius: 5px;
 }
 

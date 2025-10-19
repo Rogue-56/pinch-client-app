@@ -4,7 +4,6 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import '../App.css';
 
-// STUN servers for cross-network connectivity
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -18,6 +17,7 @@ function RoomPage() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [showUserList, setShowUserList] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [localUser, setLocalUser] = useState({ id: null, name: null });
   const [message, setMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
@@ -65,7 +65,6 @@ function RoomPage() {
     }
   };
 
-  // Get user media once on mount
   useEffect(() => {
     console.log("Getting user media...");
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -83,14 +82,12 @@ function RoomPage() {
       });
 
     return () => {
-      // Cleanup media stream on unmount
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
 
-  // Setup socket listeners and join room once we have local stream
   useEffect(() => {
     if (!localStream || !localStreamRef.current) return;
     
@@ -203,7 +200,6 @@ function RoomPage() {
       setPeers(prev => prev.filter(p => p.peerId !== userId));
     });
 
-    // Screen sharing events
     socket.on('user-started-screen-share', ({ id, name }) => {
       console.log(`User ${name} (${id}) started screen sharing`);
       const peer = addScreenPeer(id, socket);
@@ -300,13 +296,11 @@ function RoomPage() {
 
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
-      // Stop screen sharing
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       socketRef.current.emit('stop-screen-share');
       setScreenStream(null);
       screenStreamRef.current = null;
       setIsScreenSharing(false);
-      // Clean up screen peers
       screenPeersRef.current.forEach(({ peer }) => {
         if (peer && !peer.destroyed) {
           peer.destroy();
@@ -315,7 +309,6 @@ function RoomPage() {
       screenPeersRef.current = [];
       setScreenPeers([]);
     } else {
-      // Start screen sharing
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         setScreenStream(stream);
@@ -507,6 +500,9 @@ function RoomPage() {
         <button onClick={() => setShowUserList(!showUserList)}>
           {showUserList ? 'Hide Users' : 'Show Users'}
         </button>
+        <button onClick={() => setIsChatOpen(!isChatOpen)}>
+          {isChatOpen ? 'Hide Chat' : 'Show Chat'}
+        </button>
       </div>
 
       {showUserList && (
@@ -572,7 +568,7 @@ function RoomPage() {
         ))}
       </div>
 
-      <div className="chat-container">
+      <div className={`chat-container ${isChatOpen ? 'open' : ''}`}>
         <div className="chat-history">
           {chatHistory.map((msg, index) => (
             <div key={index} className="chat-message">
