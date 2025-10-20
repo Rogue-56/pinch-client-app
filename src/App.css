@@ -129,7 +129,9 @@ body {
   padding: 10px;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   grid-auto-rows: minmax(200px, 1fr);
-  padding-bottom: 80px; 
+  padding-bottom: 80px;
+  max-width: 95vw;
+  margin: 0 auto;
 }
 
 .video-container {
@@ -203,7 +205,7 @@ body {
   border-left: 1px solid var(--chat-border);
   display: flex;
   flex-direction: column;
-  z-index: 100;
+  z-index: 300; /* Increased z-index */
   transform: translateX(100%);
   transition: transform 0.3s ease-in-out;
   padding-bottom: 80px; 
