@@ -16,17 +16,16 @@ function HomePage() {
 
   const joinRoom = () => {
     if (joinRoomId.trim() === '') return;
-    // Attempt to extract room ID from a full URL
     try {
       const url = new URL(joinRoomId);
       const pathParts = url.pathname.split('/');
-      const roomId = pathParts[pathParts.length - 1];
+      const roomId = pathParts.find(part => part.length > 4);
       if (roomId) {
         navigate(`/room/${roomId}`);
-        return;
+      } else {
+        alert("Could not find a valid Room ID in the URL.");
       }
     } catch (error) {
-      // Not a valid URL, assume it's a room ID
       navigate(`/room/${joinRoomId}`);
     }
   };
@@ -42,45 +41,28 @@ function HomePage() {
   };
 
   return (
-    <div className="App-header">
-      <h1>Pinch Video Chat</h1>
-      <p>Create a new meeting or join an existing one.</p>
-      <button onClick={createRoom} style={{ fontSize: '20px', padding: '10px 20px', width: '300px' }}>
-        Create New Meeting
-      </button>
-
-      <div style={{ margin: '20px 0', display: 'flex', justifyContent: 'center', width: '300px' }}>
-        <input
-          type="text"
-          placeholder="Enter Meeting ID or Link"
-          value={joinRoomId}
-          onChange={handleJoinInputChange}
-          onKeyPress={handleJoinKeyPress}
-          style={{
-            fontSize: '16px',
-            padding: '10px',
-            borderRadius: '8px 0 0 8px',
-            border: '1px solid #cccccc',
-            width: '100%',
-            fontFamily: 'Inter, sans-serif'
-          }}
-        />
-        <button 
-          onClick={joinRoom} 
-          style={{
-            fontSize: '16px',
-            padding: '10px 20px',
-            borderRadius: '0 8px 8px 0',
-            border: 'none',
-            cursor: 'pointer',
-            backgroundColor: '#ffffff',
-            color: '#282c34',
-            fontWeight: '500',
-            fontFamily: 'Inter, sans-serif'
-          }}
-        >
-          Join
-        </button>
+    <div className="home-container">
+      <div className="home-card">
+        <h1 className="home-title">Pinch Video Chat</h1>
+        <p className="home-subtitle">High-quality video calls, simple and secure.</p>
+        
+        <div className="home-actions">
+          <div className="join-room-container">
+            <input
+              type="text"
+              placeholder="Enter Meeting ID or Link"
+              value={joinRoomId}
+              onChange={handleJoinInputChange}
+              onKeyPress={handleJoinKeyPress}
+              className="join-room-input"
+            />
+            <button onClick={joinRoom} className="join-room-button">Join</button>
+          </div>
+          <div className="separator">or</div>
+          <button onClick={createRoom} className="create-room-button">
+            Create New Meeting
+          </button>
+        </div>
       </div>
     </div>
   );
