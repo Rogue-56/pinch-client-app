@@ -373,7 +373,14 @@ function RoomPage({ theme, setTheme }) {
         className="video-grid"
         style={videoPeers.length === 0 ? { display: 'flex' } : {}}
       >
-        <div className="video-container self-video">
+        <div
+          className="video-container self-video"
+          style={{
+            maxWidth: videoPeers.length === 0 ? 'calc(min(80vh * 4 / 3, 90vw))' : undefined,
+            aspectRatio: videoPeers.length === 0 ? '4 / 3' : undefined,
+            margin: videoPeers.length === 0 ? 'auto' : undefined,
+          }}
+        >
           <video ref={localVideoRef} autoPlay playsInline muted />
           <div className="video-label">You ({currentUser.name || '...'})</div>
         </div>
@@ -412,6 +419,7 @@ function RoomPage({ theme, setTheme }) {
       </div>
 
       <div className="controls-container">
+        <div className="room-id-display">Meeting Code: {roomId}</div>
         <button onClick={toggleAudio}>{isAudioEnabled ? 'Mute' : 'Unmute'}</button>
         <button onClick={toggleVideo}>{isVideoEnabled ? 'Stop Video' : 'Start Video'}</button>
         <button onClick={toggleScreenShare}>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</button>
