@@ -11,7 +11,7 @@ const ICE_SERVERS = {
   ]
 };
 
-function RoomPage() {
+function RoomPage({ theme, setTheme }) {
   const [localStream, setLocalStream] = useState(null);
   const [peers, setPeers] = useState([]);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
@@ -476,6 +476,10 @@ function RoomPage() {
     setPeers(prev => prev.filter(p => p.peerId !== peerId));
   };
 
+  const toggleTheme = () => {
+    setTheme(prevTheme => prevTheme === 'dark' ? 'light' : 'dark');
+  };
+
   return (
     <div className="App-header">
       <audio ref={userJoinedSoundRef} src="/mixkit-correct-answer-tone-2870.wav" preload="auto" />
@@ -502,6 +506,9 @@ function RoomPage() {
         </button>
         <button onClick={() => setIsChatOpen(!isChatOpen)}>
           {isChatOpen ? 'Hide Chat' : 'Show Chat'}
+        </button>
+        <button onClick={toggleTheme}>
+          Toggle Theme
         </button>
       </div>
 
@@ -569,6 +576,7 @@ function RoomPage() {
       </div>
 
       <div className={`chat-container ${isChatOpen ? 'open' : ''}`}>
+        <button onClick={() => setIsChatOpen(false)} className="chat-close-button">X</button>
         <div className="chat-history">
           {chatHistory.map((msg, index) => (
             <div key={index} className="chat-message">
