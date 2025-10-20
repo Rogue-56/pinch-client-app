@@ -44,7 +44,7 @@ function HomePage() {
     <div className="home-container">
       <div className="home-card">
         <h1 className="home-title">Pinch Video Chat</h1>
-        <p className="home-subtitle">High-quality video calls, simple and secure.</p>
+        <p className="home-subtitle">High-quality video calls, simple and fast.</p>
         
         <div className="home-actions">
           <div className="join-room-container">
