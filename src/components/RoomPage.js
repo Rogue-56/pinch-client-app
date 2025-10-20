@@ -4,6 +4,7 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import '../App.css';
 
+// Configuration for ICE servers, used by WebRTC for NAT traversal.
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -11,36 +12,51 @@ const ICE_SERVERS = {
   ]
 };
 
+/**
+ * The main component for the video chat room.
+ * Handles video/audio streams, peer connections, screen sharing, and chat.
+ */
 function RoomPage({ theme, setTheme }) {
-  const [localStream, setLocalStream] = useState(null);
-  const [videoPeers, setVideoPeers] = useState([]);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
-  const [showUserList, setShowUserList] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState({ id: null, name: null });
-  const [message, setMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState([]);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [screenStream, setScreenStream] = useState(null);
-  const [screenPeers, setScreenPeers] = useState([]);
+  // State variables for managing the component's data and UI.
+  const [localStream, setLocalStream] = useState(null); // The user's local video/audio stream.
+  const [videoPeers, setVideoPeers] = useState([]); // Array of peers for video streams.
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true); // Is the user's audio muted?
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true); // Is the user's video turned off?
+  const [showUserList, setShowUserList] = useState(false); // Should the user list be displayed?
+  const [isChatOpen, setIsChatOpen] = useState(false); // Is the chat panel open?
+  const [currentUser, setCurrentUser] = useState({ id: null, name: null }); // The current user's info.
+  const [message, setMessage] = useState(''); // The current chat message input.
+  const [chatHistory, setChatHistory] = useState([]); // The history of chat messages.
+  const [isScreenSharing, setIsScreenSharing] = useState(false); // Is the user currently sharing their screen?
+  const [screenStream, setScreenStream] = useState(null); // The stream for screen sharing.
+  const [screenPeers, setScreenPeers] = useState([]); // Array of peers for screen sharing streams.
 
-  const localVideoRef = useRef(null);
-  const videoPeersRef = useRef([]);
-  const screenPeersRef = useRef([]);
-  const localStreamRef = useRef(null);
-  const screenStreamRef = useRef(null);
-  const socketRef = useRef(null);
-  const isScreenSharingRef = useRef(isScreenSharing);
-  const userJoinedSoundRef = useRef(null);
-  const userLeftSoundRef = useRef(null);
-  const newMessageSoundRef = useRef(null);
-  const { roomId } = useParams();
+  // Refs for accessing DOM elements and other mutable values.
+  const localVideoRef = useRef(null); // Ref for the local video element.
+  const videoPeersRef = useRef([]); // Ref for the array of video peers.
+  const screenPeersRef = useRef([]); // Ref for the array of screen sharing peers.
+  const localStreamRef = useRef(null); // Ref for the local stream object.
+  const screenStreamRef = useRef(null); // Ref for the screen sharing stream object.
+  const socketRef = useRef(null); // Ref for the socket.io connection.
+  const isScreenSharingRef = useRef(isScreenSharing); // Ref to track screen sharing state.
+  const userJoinedSoundRef = useRef(null); // Ref for the user joined sound.
+  const userLeftSoundRef = useRef(null); // Ref for the user left sound.
+  const newMessageSoundRef = useRef(null); // Ref for the new message sound.
+  const { roomId } = useParams(); // Get the room ID from the URL.
 
+  // Keep the isScreenSharingRef updated with the latest state.
   useEffect(() => {
     isScreenSharingRef.current = isScreenSharing;
   }, [isScreenSharing]);
 
+  // Initialize the audio objects for notification sounds.
+  useEffect(() => {
+    userJoinedSoundRef.current = new Audio('/mixkit-long-pop-2358.wav');
+    userLeftSoundRef.current = new Audio('/new-notification-08-352461.mp3');
+    newMessageSoundRef.current = new Audio('/mixkit-correct-answer-tone-2870.wav');
+  }, []);
+
+  // Functions to play the notification sounds.
   const playUserJoinedSound = () => {
     if (userJoinedSoundRef.current) {
       userJoinedSoundRef.current.play().catch(error => {
@@ -65,6 +81,7 @@ function RoomPage({ theme, setTheme }) {
     }
   };
 
+  // Get the user's media stream (video and audio) when the component mounts.
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
@@ -79,6 +96,7 @@ function RoomPage({ theme, setTheme }) {
         alert('Could not get camera/mic permission');
       });
 
+    // Clean up the stream when the component unmounts.
     return () => {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -86,6 +104,7 @@ function RoomPage({ theme, setTheme }) {
     };
   }, []);
 
+  // Set up the socket.io connection and event listeners.
   useEffect(() => {
     if (!localStream || !localStreamRef.current) return;
     
@@ -93,6 +112,7 @@ function RoomPage({ theme, setTheme }) {
       return;
     }
 
+    // Connect to the server.
     const socket = io('https://pinch-server-app.onrender.com/', { 
       path: "/socket.io/",
       transports: ['polling', 'websocket'],
@@ -100,16 +120,19 @@ function RoomPage({ theme, setTheme }) {
     });
     socketRef.current = socket;
 
+    // When connected, join the room.
     socket.on('connect', () => {
       setCurrentUser(prev => ({ ...prev, id: socket.id }));
       socket.emit('join-room', roomId);
       playUserJoinedSound();
     });
 
+    // When a name is assigned by the server.
     socket.on('name-assigned', (name) => {
       setCurrentUser(prev => ({ ...prev, name }));
     });
 
+    // When receiving the list of existing users in the room.
     socket.on('existing-users', (users) => {
       const newPeers = users
         .filter(user => user.id !== socket.id && !findVideoPeer(user.id))
@@ -124,6 +147,7 @@ function RoomPage({ theme, setTheme }) {
       }
     });
 
+    // When a new user joins the room.
     socket.on('user-joined', (user) => {
       playUserJoinedSound();
       
@@ -143,15 +167,18 @@ function RoomPage({ theme, setTheme }) {
       }
     });
 
+    // When receiving the chat history.
     socket.on('chat-history', (history) => {
       setChatHistory(history);
     });
 
+    // When a new chat message is received.
     socket.on('new-message', (message) => {
       setChatHistory(prev => [...prev, message]);
       playNewMessageSound();
     });
 
+    // WebRTC signaling: when an offer is received.
     socket.on('offer', (payload) => {
       const peerRef = findVideoPeer(payload.from);
       if (peerRef && !peerRef.peer.destroyed) {
@@ -159,6 +186,7 @@ function RoomPage({ theme, setTheme }) {
       }
     });
 
+    // WebRTC signaling: when an answer is received.
     socket.on('answer', (payload) => {
       const peerRef = findVideoPeer(payload.from);
       if (peerRef && !peerRef.peer.destroyed) {
@@ -166,6 +194,7 @@ function RoomPage({ theme, setTheme }) {
       }
     });
 
+    // WebRTC signaling: when an ICE candidate is received.
     socket.on('ice-candidate', (payload) => {
       const peerRef = findVideoPeer(payload.from);
       if (peerRef && !peerRef.peer.destroyed) {
@@ -173,6 +202,7 @@ function RoomPage({ theme, setTheme }) {
       }
     });
 
+    // When a user disconnects from the room.
     socket.on('user-disconnected', (userId) => {
       playUserLeftSound();
       const peerRef = findVideoPeer(userId);
@@ -183,6 +213,7 @@ function RoomPage({ theme, setTheme }) {
       setVideoPeers(prev => prev.filter(p => p.peerId !== userId));
     });
 
+    // When a user starts screen sharing.
     socket.on('user-started-screen-share', ({ id, name }) => {
       const peer = acceptScreenSharePeer(id, socket);
       const newPeerRef = { peerId: id, peer, name };
@@ -190,6 +221,7 @@ function RoomPage({ theme, setTheme }) {
       setScreenPeers(prev => [...prev, newPeerRef]);
     });
 
+    // When a user stops screen sharing.
     socket.on('user-stopped-screen-share', ({ id }) => {
       const peerRef = findScreenSharePeer(id);
       if (peerRef && !peerRef.peer.destroyed) {
@@ -199,6 +231,7 @@ function RoomPage({ theme, setTheme }) {
       setScreenPeers(prev => prev.filter(p => p.peerId !== id));
     });
 
+    // WebRTC signaling for screen sharing.
     socket.on('screen-offer', (payload) => {
       const peerRef = findScreenSharePeer(payload.from);
       if (peerRef && !peerRef.peer.destroyed) {
@@ -220,6 +253,7 @@ function RoomPage({ theme, setTheme }) {
       }
     });
 
+    // Clean up connections when the component unmounts.
     return () => {
       videoPeersRef.current.forEach(({ peer }) => {
         if (peer && !peer.destroyed) peer.destroy();
@@ -240,6 +274,9 @@ function RoomPage({ theme, setTheme }) {
     };
   }, [roomId, localStream]);
 
+  /**
+   * Toggles the audio on and off.
+   */
   const toggleAudio = () => {
     const stream = localStreamRef.current;
     if (stream) {
@@ -251,6 +288,9 @@ function RoomPage({ theme, setTheme }) {
     }
   };
 
+  /**
+   * Toggles the video on and off.
+   */
   const toggleVideo = () => {
     const stream = localStreamRef.current;
     if (stream) {
@@ -262,8 +302,12 @@ function RoomPage({ theme, setTheme }) {
     }
   };
 
+  /**
+   * Toggles screen sharing on and off.
+   */
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
+      // Stop screen sharing
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       socketRef.current.emit('stop-screen-share');
       setScreenStream(null);
@@ -275,6 +319,7 @@ function RoomPage({ theme, setTheme }) {
       screenPeersRef.current = [];
       setScreenPeers([]);
     } else {
+      // Start screen sharing
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         setScreenStream(stream);
@@ -282,6 +327,7 @@ function RoomPage({ theme, setTheme }) {
         setIsScreenSharing(true);
         socketRef.current.emit('start-screen-share');
 
+        // Create screen sharing peers for existing users.
         const newScreenPeers = videoPeersRef.current.map(p => {
           const peer = initiateScreenSharePeer(p.peerId, socketRef.current.id, stream, socketRef.current);
           return { peerId: p.peerId, peer, name: p.name };
@@ -289,6 +335,7 @@ function RoomPage({ theme, setTheme }) {
         screenPeersRef.current = newScreenPeers;
         setScreenPeers(newScreenPeers);
 
+        // When the user stops sharing from the browser UI.
         stream.getVideoTracks()[0].onended = () => toggleScreenShare();
       } catch (err) {
         console.error("Error starting screen share:", err);
@@ -296,6 +343,9 @@ function RoomPage({ theme, setTheme }) {
     }
   };
 
+  /**
+   * Sends a chat message.
+   */
   const sendMessage = (e) => {
     e.preventDefault();
     if (message.trim() && socketRef.current) {
@@ -304,6 +354,9 @@ function RoomPage({ theme, setTheme }) {
     }
   };
 
+  /**
+   * Creates a new video peer connection (as the initiator).
+   */
   function createVideoPeer(userIdToSignal, callerId, stream, socket) {
     const peer = new Peer({ initiator: true, trickle: true, config: ICE_SERVERS });
     stream.getTracks().forEach(track => peer.addTrack(track, stream));
@@ -317,6 +370,9 @@ function RoomPage({ theme, setTheme }) {
     return peer;
   }
 
+  /**
+   * Adds a new video peer connection (not as the initiator).
+   */
   function addVideoPeer(userIdSignaling, stream, socket) {
     const peer = new Peer({ initiator: false, trickle: true, config: ICE_SERVERS });
     stream.getTracks().forEach(track => peer.addTrack(track, stream));
@@ -330,10 +386,16 @@ function RoomPage({ theme, setTheme }) {
     return peer;
   }
 
+  /**
+   * Finds a video peer by user ID.
+   */
   function findVideoPeer(userId) {
     return videoPeersRef.current.find(p => p.peerId === userId);
   }
 
+  /**
+   * Initiates a screen sharing peer connection.
+   */
   function initiateScreenSharePeer(userIdToSignal, callerId, stream, socket) {
     const peer = new Peer({ initiator: true, trickle: true, config: ICE_SERVERS });
     stream.getTracks().forEach(track => peer.addTrack(track, stream));
@@ -347,6 +409,9 @@ function RoomPage({ theme, setTheme }) {
     return peer;
   }
 
+  /**
+   * Accepts a screen sharing peer connection.
+   */
   function acceptScreenSharePeer(userIdSignaling, socket) {
     const peer = new Peer({ initiator: false, trickle: true, config: ICE_SERVERS });
     peer.on('signal', (data) => {
@@ -359,45 +424,68 @@ function RoomPage({ theme, setTheme }) {
     return peer;
   }
 
+  /**
+   * Finds a screen sharing peer by user ID.
+   */
   function findScreenSharePeer(userId) {
     return screenPeersRef.current.find(p => p.peerId === userId);
   }
 
+  /**
+   * Toggles the color theme.
+   */
   const toggleTheme = () => {
     setTheme(prevTheme => prevTheme === 'dark' ? 'light' : 'dark');
   };
 
+  // Check if there is any screen sharing happening.
+  const hasScreenShare = isScreenSharing || screenPeers.length > 0;
+
   return (
     <div className="room-container">
-      <div
-        className="video-grid"
-        style={videoPeers.length === 0 ? { display: 'flex' } : {}}
-      >
+      <div className={`main-content ${hasScreenShare ? 'screen-sharing-active' : ''}`}>
+        {/* Video grid for all participants */}
         <div
-          className="video-container self-video"
-          style={{
-            maxWidth: videoPeers.length === 0 ? 'calc(min(80vh * 4 / 3, 90vw))' : undefined,
-            aspectRatio: videoPeers.length === 0 ? '4 / 3' : undefined,
-            margin: videoPeers.length === 0 ? 'auto' : undefined,
-          }}
+          className="video-grid"
+          style={videoPeers.length === 0 && !hasScreenShare ? { display: 'flex' } : {}}
         >
-          <video ref={localVideoRef} autoPlay playsInline muted />
-          <div className="video-label">You ({currentUser.name || '...'})</div>
+          {/* Local user's video */}
+          <div
+            className="video-container self-video"
+            style={{
+              maxWidth: videoPeers.length === 0 && !hasScreenShare ? 'calc(min(80vh * 4 / 3, 90vw))' : undefined,
+              aspectRatio: videoPeers.length === 0 && !hasScreenShare ? '4 / 3' : undefined,
+              margin: videoPeers.length === 0 && !hasScreenShare ? 'auto' : undefined,
+            }}
+          >
+            <video ref={localVideoRef} autoPlay playsInline muted />
+            <div className="video-label">You ({currentUser.name || '...'})</div>
+          </div>
+          {/* Remote users' videos */}
+          {videoPeers.map(({ peerId, peer, name }) => (
+            <RemoteVideo key={peerId} peerId={peerId} peer={peer} name={name} />
+          ))}
         </div>
-        {videoPeers.map(({ peerId, peer, name }) => (
-          <RemoteVideo key={peerId} peerId={peerId} peer={peer} name={name} />
-        ))}
-        {isScreenSharing && (
-            <div className="video-container screen-share-video">
+
+        {/* Container for screen sharing */}
+        {hasScreenShare && (
+          <div className="screen-share-container">
+            {/* Local user's screen share */}
+            {isScreenSharing && (
+              <div className="video-container screen-share-video">
                 <video ref={video => { if (video) video.srcObject = screenStream; }} autoPlay playsInline />
                 <div className="video-label">Your Screen</div>
-            </div>
+              </div>
+            )}
+            {/* Remote users' screen shares */}
+            {screenPeers.map(({ peerId, peer, name }) => (
+              <ScreenShareVideo key={`screen-${peerId}`} peerId={peerId} peer={peer} name={`${name}'s Screen`} />
+            ))}
+          </div>
         )}
-        {screenPeers.map(({ peerId, peer, name }) => (
-          <ScreenShareVideo key={`screen-${peerId}`} peerId={peerId} peer={peer} name={`${name}'s Screen`} />
-        ))}
       </div>
 
+      {/* Chat panel */}
       <div className={`chat-container ${isChatOpen ? 'open' : ''}`}>
         <button onClick={() => setIsChatOpen(false)} className="chat-close-button">X</button>
         <div className="chat-history">
@@ -418,6 +506,7 @@ function RoomPage({ theme, setTheme }) {
         </form>
       </div>
 
+      {/* Controls for the room */}
       <div className="controls-container">
         <div className="room-id-display">Meeting Code: {roomId}</div>
         <button onClick={toggleAudio}>{isAudioEnabled ? 'Mute' : 'Unmute'}</button>
@@ -428,6 +517,7 @@ function RoomPage({ theme, setTheme }) {
         <button onClick={toggleTheme}>Theme</button>
       </div>
 
+      {/* User list modal */}
       {showUserList && (
         <div className="user-list-modal">
             <h3>Connected Users ({videoPeers.length + 1})</h3>
@@ -443,6 +533,9 @@ function RoomPage({ theme, setTheme }) {
   );
 }
 
+/**
+ * Component for rendering a remote user's video.
+ */
 const RemoteVideo = ({ peer, name }) => {
   const videoRef = useRef(null);
 
@@ -462,6 +555,9 @@ const RemoteVideo = ({ peer, name }) => {
   );
 };
 
+/**
+ * Component for rendering a remote user's screen share.
+ */
 const ScreenShareVideo = ({ peer, name }) => {
   const videoRef = useRef(null);
 
