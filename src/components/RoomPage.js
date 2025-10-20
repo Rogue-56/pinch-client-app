@@ -369,7 +369,10 @@ function RoomPage({ theme, setTheme }) {
 
   return (
     <div className="room-container">
-      <div className="video-grid">
+      <div
+        className="video-grid"
+        style={videoPeers.length === 0 ? { display: 'flex' } : {}}
+      >
         <div className="video-container self-video">
           <video ref={localVideoRef} autoPlay playsInline muted />
           <div className="video-label">You ({currentUser.name || '...'})</div>
